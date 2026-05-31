@@ -48,7 +48,8 @@ app.post('/render', async (req, res) => {
     });
     res.set('Content-Type', 'application/pdf');
     res.set('Content-Disposition', `attachment; filename="${(filename || 'card').replace(/[^a-z0-9._-]/gi, '_')}.pdf"`);
-    res.send(pdf);
+    // page.pdf() returns a Uint8Array; wrap in a Buffer so Express sends raw bytes (not JSON).
+    res.send(Buffer.from(pdf));
   } catch (err) {
     console.error('render error:', err);
     res.status(500).json({ error: String(err && err.message || err) });
