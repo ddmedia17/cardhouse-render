@@ -41,11 +41,27 @@ app.post('/render', async (req, res) => {
     await page.setContent(html, { waitUntil: 'networkidle0', timeout: 60000 });
     // make sure web fonts are loaded before snapshotting
     await page.evaluate(async () => { if (document.fonts && document.fonts.ready) await document.fonts.ready; });
-    const pdf = await page.pdf({
-      printBackground: true,
-      preferCSSPageSize: true,                       // honor the @page size in the HTML
-      margin: { top: 0, right: 0, bottom: 0, left: 0 },
+    // Measure the actual print-page box (.ch-pp) and size the PDF page to it exactly. Using explicit
+    // width/height with scale:1 stops Chrome's shrink-to-fit, which was scaling the content to ~81%
+    // and leaving white margins. Falls back to the CSS @page size if no .ch-pp is present.
+    const box = await page.evaluate(() => {
+      const pp = document.querySelector('.ch-pp');
+      if (!pp) return null;
+      const r = pp.getBoundingClientRect();
+      return { w: Math.round(r.width), h: Math.round(r.height) };
     });
+    const pdfOpts = {
+      printBackground: true,
+      margin: { top: 0, right: 0, bottom: 0, left: 0 },
+    };
+    if (box && box.w > 0 && box.h > 0) {
+      pdfOpts.width = box.w + 'px';
+      pdfOpts.height = box.h + 'px';
+      pdfOpts.scale = 1;
+    } else {
+      pdfOpts.preferCSSPageSize = true;
+    }
+    const pdf = await page.pdf(pdfOpts);
     res.set('Content-Type', 'application/pdf');
     res.set('Content-Disposition', `attachment; filename="${(filename || 'card').replace(/[^a-z0-9._-]/gi, '_')}.pdf"`);
     // page.pdf() returns a Uint8Array; wrap in a Buffer so Express sends raw bytes (not JSON).
